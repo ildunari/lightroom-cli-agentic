@@ -158,6 +158,10 @@ lr catalog find --capture-date-from "2024-06-01" --keyword "portrait"
 # Batch develop editing
 lr develop batch-set --photo-ids 123,456,789 Exposure 0.5
 
+# Find likely exposure-bracketed groups
+lr catalog find-brackets --photo-ids 123,456,789
+lr catalog find-brackets --all --max-seconds-between 2
+
 # List/search develop presets
 lr catalog develop-presets --query "Portra"
 

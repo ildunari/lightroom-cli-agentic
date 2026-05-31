@@ -220,6 +220,95 @@ def test_catalog_batch_metadata_custom_keys(mock_get_bridge, runner):
 
 
 @patch("cli.helpers.get_bridge")
+def test_catalog_find_brackets_defaults_to_selection(mock_get_bridge, runner):
+    """lr catalog find-brackets searches the current selection by default"""
+    mock_bridge = AsyncMock()
+    mock_bridge.send_command.return_value = {
+        "id": "12",
+        "success": True,
+        "result": {"groups": [], "count": 0},
+    }
+    mock_get_bridge.return_value = mock_bridge
+
+    result = runner.invoke(cli, ["catalog", "find-brackets"])
+    assert result.exit_code == 0
+    mock_bridge.send_command.assert_called_once_with(
+        "catalog.findExposureBrackets",
+        {
+            "maxSecondsBetween": 2.0,
+            "minPhotos": 3,
+            "maxPhotos": 9,
+            "source": "selected",
+        },
+        timeout=60.0,
+    )
+
+
+@patch("cli.helpers.get_bridge")
+def test_catalog_find_brackets_with_photo_ids(mock_get_bridge, runner):
+    """lr catalog find-brackets can inspect explicit IDs"""
+    mock_bridge = AsyncMock()
+    mock_bridge.send_command.return_value = {
+        "id": "13",
+        "success": True,
+        "result": {"groups": [], "count": 0},
+    }
+    mock_get_bridge.return_value = mock_bridge
+
+    result = runner.invoke(
+        cli,
+        [
+            "catalog",
+            "find-brackets",
+            "--photo-ids",
+            "1,2,3",
+            "--max-seconds-between",
+            "1.5",
+            "--min-photos",
+            "3",
+            "--max-photos",
+            "5",
+        ],
+    )
+    assert result.exit_code == 0
+    mock_bridge.send_command.assert_called_once_with(
+        "catalog.findExposureBrackets",
+        {
+            "maxSecondsBetween": 1.5,
+            "minPhotos": 3,
+            "maxPhotos": 5,
+            "photoIds": ["1", "2", "3"],
+        },
+        timeout=60.0,
+    )
+
+
+@patch("cli.helpers.get_bridge")
+def test_catalog_find_brackets_all(mock_get_bridge, runner):
+    """lr catalog find-brackets --all scans the catalog"""
+    mock_bridge = AsyncMock()
+    mock_bridge.send_command.return_value = {
+        "id": "14",
+        "success": True,
+        "result": {"groups": [], "count": 0},
+    }
+    mock_get_bridge.return_value = mock_bridge
+
+    result = runner.invoke(cli, ["catalog", "find-brackets", "--all"])
+    assert result.exit_code == 0
+    mock_bridge.send_command.assert_called_once_with(
+        "catalog.findExposureBrackets",
+        {
+            "maxSecondsBetween": 2.0,
+            "minPhotos": 3,
+            "maxPhotos": 9,
+            "source": "all",
+        },
+        timeout=60.0,
+    )
+
+
+@patch("cli.helpers.get_bridge")
 def test_catalog_rotate_left(mock_get_bridge, runner):
     mock_bridge = AsyncMock()
     mock_bridge.send_command.return_value = {

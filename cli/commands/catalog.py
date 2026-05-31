@@ -164,6 +164,37 @@ def find_photos(
     )
 
 
+@catalog.command("find-brackets")
+@click.option("--photo-ids", help="Comma-separated photo IDs to inspect")
+@click.option(
+    "--all",
+    "all_photos",
+    is_flag=True,
+    default=False,
+    help="Scan the whole catalog instead of selected photos",
+)
+@click.option("--max-seconds-between", default=2.0, type=float, help="Max capture-time gap inside one bracket")
+@click.option("--min-photos", default=3, type=int, help="Minimum photos and distinct EV values per bracket")
+@click.option("--max-photos", default=9, type=int, help="Maximum photos in one bracket before splitting")
+@json_input_options
+@click.pass_context
+def find_brackets(ctx, photo_ids, all_photos, max_seconds_between, min_photos, max_photos, **kwargs):
+    """Find likely exposure-bracketed photo groups"""
+    params = {
+        "maxSecondsBetween": max_seconds_between,
+        "minPhotos": min_photos,
+        "maxPhotos": max_photos,
+    }
+    if photo_ids:
+        params["photoIds"] = [pid.strip() for pid in photo_ids.split(",") if pid.strip()]
+    elif all_photos:
+        params["source"] = "all"
+    else:
+        params["source"] = "selected"
+
+    execute_command(ctx, "catalog.findExposureBrackets", params, timeout=60.0)
+
+
 @catalog.command("select")
 @click.argument("photo_ids", nargs=-1, required=True)
 @click.option("--dry-run", is_flag=True, default=False, help="Preview without executing")

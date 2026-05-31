@@ -202,7 +202,7 @@ local function registerSystemCommands()
             result = {
                 pong = true,
                 timestamp = os.time(),
-                version = "1.2.1",
+                version = "1.2.2",
                 protocolVersion = "1"
             }
         })
@@ -350,6 +350,7 @@ local function registerApiCommands()
     router:register("catalog.getAllPhotos", CatalogModule.getAllPhotos, "sync")
     router:register("catalog.findPhotoByPath", CatalogModule.findPhotoByPath, "sync")
     router:register("catalog.findPhotos", CatalogModule.findPhotos, "sync")
+    router:register("catalog.findExposureBrackets", CatalogModule.findExposureBrackets, "sync")
     router:register("catalog.getCollections", CatalogModule.getCollections, "sync")
     router:register("catalog.getKeywords", CatalogModule.getKeywords, "sync")
     router:register("catalog.getFolders", CatalogModule.getFolders, "sync")

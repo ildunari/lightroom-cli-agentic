@@ -154,6 +154,7 @@ class TestResponseFields:
             ("catalog.getSelectedPhotos", ["photos", "count"]),
             ("catalog.getAllPhotos", ["photos", "total", "limit", "offset"]),
             ("catalog.searchPhotos", ["photos", "total", "query"]),
+            ("catalog.findExposureBrackets", ["groups", "count", "scanned", "ignored"]),
             (
                 "catalog.getPhotoMetadata",
                 ["filename", "path", "rating", "flag", "keywords"],

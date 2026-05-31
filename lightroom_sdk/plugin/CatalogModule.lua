@@ -773,6 +773,184 @@ function CatalogModule.findPhotos(params, callback)
     callback({ result = responseResult })
 end
 
+local function parseExposureBias(photo)
+    local raw = photo:getRawMetadata("exposureBias") or photo:getRawMetadata("exposureBiasValue")
+    if type(raw) == "number" then
+        return raw
+    end
+    if type(raw) == "string" then
+        local value = string.match(raw, "[-+]?%d+%.?%d*")
+        if value then return tonumber(value) end
+    end
+
+    local formatted = photo:getFormattedMetadata("exposureBias") or photo:getFormattedMetadata("exposureBiasValue")
+    if type(formatted) == "string" then
+        local value = string.match(formatted, "[-+]?%d+%.?%d*")
+        if value then return tonumber(value) end
+    end
+
+    return nil
+end
+
+local function bracketPhotoInfo(photo)
+    local rawCaptureTime = photo:getRawMetadata("dateTimeOriginal")
+    local captureTime = photo:getFormattedMetadata("dateTimeOriginal")
+    local captureTs = nil
+
+    if type(rawCaptureTime) == "number" then
+        captureTs = rawCaptureTime
+    elseif LrDate and LrDate.timeToW3CDate and rawCaptureTime then
+        local ok, w3c = ErrorUtils.safeCall(LrDate.timeToW3CDate, rawCaptureTime)
+        if ok and type(w3c) == "string" then
+            captureTime = w3c
+            local y, mo, d, h, mi, s = string.match(w3c, "^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)")
+            if y then
+                captureTs = os.time({
+                    year = tonumber(y),
+                    month = tonumber(mo),
+                    day = tonumber(d),
+                    hour = tonumber(h),
+                    min = tonumber(mi),
+                    sec = tonumber(s)
+                })
+            end
+        end
+    end
+
+    return {
+        id = photo.localIdentifier,
+        filename = photo:getFormattedMetadata("fileName"),
+        path = photo:getRawMetadata("path"),
+        captureTime = captureTime,
+        captureTs = captureTs,
+        exposureBias = parseExposureBias(photo)
+    }
+end
+
+local function distinctExposureCount(items)
+    local seen = {}
+    local count = 0
+    for _, item in ipairs(items) do
+        if item.exposureBias ~= nil then
+            local key = string.format("%.3f", item.exposureBias)
+            if not seen[key] then
+                seen[key] = true
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
+local function isBracketGroup(items, minPhotos)
+    return #items >= minPhotos and distinctExposureCount(items) >= minPhotos
+end
+
+local function appendBracketGroup(groups, items)
+    local photos = {}
+    local exposureBiases = {}
+    for _, item in ipairs(items) do
+        table.insert(photos, {
+            id = item.id,
+            filename = item.filename,
+            path = item.path,
+            captureTime = item.captureTime,
+            exposureBias = item.exposureBias
+        })
+        table.insert(exposureBiases, item.exposureBias)
+    end
+    table.insert(groups, {
+        count = #photos,
+        startedAt = photos[1] and photos[1].captureTime or nil,
+        endedAt = photos[#photos] and photos[#photos].captureTime or nil,
+        exposureBiases = exposureBiases,
+        photos = photos
+    })
+end
+
+-- Find likely exposure-bracketed groups. This only groups source photos;
+-- Lightroom Classic's HDR Photo Merge is not exposed as a documented Lua SDK call.
+function CatalogModule.findExposureBrackets(params, callback)
+    ensureLrModules()
+    params = params or {}
+    local logger = getLogger()
+    local source = params.source or "selected"
+    local photoIds = params.photoIds
+    local maxSecondsBetween = tonumber(params.maxSecondsBetween) or 2
+    local minPhotos = tonumber(params.minPhotos) or 3
+    local maxPhotos = tonumber(params.maxPhotos) or 9
+    if maxSecondsBetween < 0 then maxSecondsBetween = 0 end
+    if minPhotos < 2 then minPhotos = 2 end
+    if maxPhotos < minPhotos then maxPhotos = minPhotos end
+
+    local catalog = LrApplication.activeCatalog()
+    local photos = {}
+
+    catalog:withReadAccessDo(function()
+        if type(photoIds) == "table" and #photoIds > 0 then
+            for _, photoId in ipairs(photoIds) do
+                local photo = catalog:getPhotoByLocalId(tonumber(photoId))
+                if photo then table.insert(photos, photo) end
+            end
+        elseif source == "all" then
+            photos = catalog:getAllPhotos()
+        else
+            photos = catalog:getTargetPhotos()
+        end
+    end)
+
+    local items = {}
+    local missingCaptureTime = 0
+    local missingExposureBias = 0
+    for _, photo in ipairs(photos or {}) do
+        local item = bracketPhotoInfo(photo)
+        if item.captureTs == nil then missingCaptureTime = missingCaptureTime + 1 end
+        if item.exposureBias == nil then missingExposureBias = missingExposureBias + 1 end
+        if item.captureTs ~= nil and item.exposureBias ~= nil then
+            table.insert(items, item)
+        end
+    end
+
+    table.sort(items, function(a, b)
+        if a.captureTs == b.captureTs then
+            return tostring(a.filename or a.id) < tostring(b.filename or b.id)
+        end
+        return a.captureTs < b.captureTs
+    end)
+
+    local groups = {}
+    local current = {}
+    for _, item in ipairs(items) do
+        local prev = current[#current]
+        local startsNew = prev and ((item.captureTs - prev.captureTs) > maxSecondsBetween or #current >= maxPhotos)
+        if startsNew then
+            if isBracketGroup(current, minPhotos) then appendBracketGroup(groups, current) end
+            current = {}
+        end
+        table.insert(current, item)
+    end
+    if isBracketGroup(current, minPhotos) then appendBracketGroup(groups, current) end
+
+    logger:info("Found " .. #groups .. " exposure bracket groups from " .. tostring(#photos or 0) .. " photos")
+    callback({
+        result = {
+            groups = groups,
+            count = #groups,
+            scanned = #photos,
+            ignored = {
+                missingCaptureTime = missingCaptureTime,
+                missingExposureBias = missingExposureBias
+            },
+            parameters = {
+                source = source,
+                maxSecondsBetween = maxSecondsBetween,
+                minPhotos = minPhotos,
+                maxPhotos = maxPhotos
+            }
+        }
+    })
+end
+
 -- Get collections in catalog
 function CatalogModule.getCollections(params, callback)
     ensureLrModules()
