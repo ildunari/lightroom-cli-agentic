@@ -173,24 +173,73 @@ def find_photos(
     default=False,
     help="Scan the whole catalog instead of selected photos",
 )
-@click.option("--max-seconds-between", default=2.0, type=float, help="Max capture-time gap inside one bracket")
-@click.option("--min-photos", default=3, type=int, help="Minimum photos and distinct EV values per bracket")
-@click.option("--max-photos", default=9, type=int, help="Maximum photos in one bracket before splitting")
+@click.option("--folder-path", help="Folder path substring filter")
+@click.option("--capture-date-from", help="Capture date from (YYYY-MM-DD or ISO 8601)")
+@click.option("--capture-date-to", help="Capture date to (YYYY-MM-DD or ISO 8601, inclusive)")
+@click.option("--file-format", help="File format filter (RAW/DNG/JPEG/etc.)")
+@click.option(
+    "--max-seconds-between",
+    default=2.0,
+    type=click.FloatRange(min=0),
+    help="Max capture-time gap inside one bracket",
+)
+@click.option(
+    "--min-photos",
+    default=3,
+    type=click.IntRange(min=2, max=20),
+    help="Minimum photos and distinct EV values per bracket",
+)
+@click.option(
+    "--max-photos",
+    default=9,
+    type=click.IntRange(min=2, max=20),
+    help="Maximum photos in one bracket before splitting",
+)
 @json_input_options
 @click.pass_context
-def find_brackets(ctx, photo_ids, all_photos, max_seconds_between, min_photos, max_photos, **kwargs):
+def find_brackets(
+    ctx,
+    photo_ids,
+    all_photos,
+    folder_path,
+    capture_date_from,
+    capture_date_to,
+    file_format,
+    max_seconds_between,
+    min_photos,
+    max_photos,
+    **kwargs,
+):
     """Find likely exposure-bracketed photo groups"""
+    if max_photos < min_photos:
+        raise click.BadParameter(
+            "--max-photos must be greater than or equal to --min-photos",
+            param_hint="--max-photos",
+        )
+
     params = {
         "maxSecondsBetween": max_seconds_between,
         "minPhotos": min_photos,
         "maxPhotos": max_photos,
     }
-    if photo_ids:
-        params["photoIds"] = [pid.strip() for pid in photo_ids.split(",") if pid.strip()]
+    if photo_ids is not None:
+        parsed_photo_ids = [pid.strip() for pid in photo_ids.split(",") if pid.strip()]
+        if not parsed_photo_ids:
+            raise click.BadParameter("--photo-ids must contain at least one non-empty ID", param_hint="--photo-ids")
+        params["photoIds"] = parsed_photo_ids
     elif all_photos:
         params["source"] = "all"
     else:
         params["source"] = "selected"
+
+    if folder_path:
+        params["folderPath"] = folder_path
+    if capture_date_from:
+        params["captureDateFrom"] = capture_date_from
+    if capture_date_to:
+        params["captureDateTo"] = capture_date_to
+    if file_format:
+        params["fileFormat"] = file_format
 
     execute_command(ctx, "catalog.findExposureBrackets", params, timeout=60.0)
 

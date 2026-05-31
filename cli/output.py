@@ -72,13 +72,8 @@ class OutputFormatter:
                 if parent not in data:
                     continue
                 value = data[parent]
-                if isinstance(value, list):
-                    result[parent] = [
-                        {c: item[c] for c in children if c in item} if isinstance(item, dict) else item
-                        for item in value
-                    ]
-                elif isinstance(value, dict):
-                    result[parent] = {c: value[c] for c in children if c in value}
+                if isinstance(value, (dict, list)):
+                    result[parent] = OutputFormatter._filter_fields(value, children)
                 # scalar values have no children — skip (dotted filter on scalar is a no-op)
             return result
         elif isinstance(data, list):

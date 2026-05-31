@@ -1157,6 +1157,26 @@ _register(
                 description="Photo source when photoIds is omitted",
             ),
             ParamSchema(
+                "folderPath",
+                ParamType.STRING,
+                description="Optional folder path substring filter",
+            ),
+            ParamSchema(
+                "captureDateFrom",
+                ParamType.STRING,
+                description="Optional capture date lower bound (YYYY-MM-DD or ISO 8601)",
+            ),
+            ParamSchema(
+                "captureDateTo",
+                ParamType.STRING,
+                description="Optional capture date upper bound (YYYY-MM-DD or ISO 8601, inclusive)",
+            ),
+            ParamSchema(
+                "fileFormat",
+                ParamType.STRING,
+                description="Optional Lightroom file format filter (RAW/DNG/JPEG/etc.)",
+            ),
+            ParamSchema(
                 "maxSecondsBetween",
                 ParamType.FLOAT,
                 default=2.0,
@@ -1181,7 +1201,7 @@ _register(
             ),
         ],
         timeout=60.0,
-        response_fields=["groups", "count", "scanned", "ignored"],
+        response_fields=["groups", "count", "scanned", "ignored", "warnings", "handoff", "parameters"],
     ),
     CommandSchema(
         "catalog.setSelectedPhotos",

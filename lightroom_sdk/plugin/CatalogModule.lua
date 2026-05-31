@@ -773,28 +773,81 @@ function CatalogModule.findPhotos(params, callback)
     callback({ result = responseResult })
 end
 
+local function safeFormattedMetadata(photo, key)
+    local ok, value = ErrorUtils.safeCall(function()
+        return photo:getFormattedMetadata(key)
+    end)
+    if ok then
+        return value
+    end
+    return nil
+end
+
+local function safeRawMetadata(photo, key)
+    local ok, value = ErrorUtils.safeCall(function()
+        return photo:getRawMetadata(key)
+    end)
+    if ok then
+        return value
+    end
+    return nil
+end
+
+local function parseExposureBiasText(text)
+    if type(text) ~= "string" then
+        return nil
+    end
+
+    local numerator, denominator = string.match(text, "([-+]?%d+)%s*/%s*(%d+)")
+    if numerator and denominator and tonumber(denominator) ~= 0 then
+        return tonumber(numerator) / tonumber(denominator)
+    end
+
+    local value = string.match(text, "[-+]?%d+%.?%d*")
+    if value then
+        return tonumber(value)
+    end
+    return nil
+end
+
 local function parseExposureBias(photo)
-    local raw = photo:getRawMetadata("exposureBias") or photo:getRawMetadata("exposureBiasValue")
+    -- Lightroom SDK docs expose exposure bias as raw and formatted metadata;
+    -- unsupported metadata keys can throw, so each probe must degrade to nil.
+    local raw = safeRawMetadata(photo, "exposureBias")
     if type(raw) == "number" then
         return raw
     end
-    if type(raw) == "string" then
-        local value = string.match(raw, "[-+]?%d+%.?%d*")
-        if value then return tonumber(value) end
-    end
+    local rawValue = parseExposureBiasText(raw)
+    if rawValue then return rawValue end
 
-    local formatted = photo:getFormattedMetadata("exposureBias") or photo:getFormattedMetadata("exposureBiasValue")
-    if type(formatted) == "string" then
-        local value = string.match(formatted, "[-+]?%d+%.?%d*")
-        if value then return tonumber(value) end
+    local formatted = safeFormattedMetadata(photo, "exposureBias")
+        or safeFormattedMetadata(photo, "exposureBiasValue")
+    if type(formatted) == "number" then
+        return formatted
     end
+    local formattedValue = parseExposureBiasText(formatted)
+    if formattedValue then return formattedValue end
 
     return nil
 end
 
+local function hasBracketFilters(params)
+    return params.folderPath ~= nil or params.captureDateFrom ~= nil
+        or params.captureDateTo ~= nil or params.fileFormat ~= nil
+end
+
+local function bracketFilterDesc(params)
+    local searchDesc = {}
+    if params.folderPath then searchDesc.folderPath = params.folderPath end
+    if params.captureDateFrom then searchDesc.captureDateFrom = params.captureDateFrom end
+    if params.captureDateTo then searchDesc.captureDateTo = params.captureDateTo end
+    if params.fileFormat then searchDesc.fileFormat = params.fileFormat end
+    return searchDesc
+end
+
 local function bracketPhotoInfo(photo)
-    local rawCaptureTime = photo:getRawMetadata("dateTimeOriginal")
-    local captureTime = photo:getFormattedMetadata("dateTimeOriginal")
+    local rawCaptureTime = safeRawMetadata(photo, "dateTimeOriginal")
+    local captureTime = safeFormattedMetadata(photo, "dateTimeOriginal")
     local captureTs = nil
 
     if type(rawCaptureTime) == "number" then
@@ -819,8 +872,8 @@ local function bracketPhotoInfo(photo)
 
     return {
         id = photo.localIdentifier,
-        filename = photo:getFormattedMetadata("fileName"),
-        path = photo:getRawMetadata("path"),
+        filename = safeFormattedMetadata(photo, "fileName"),
+        path = safeRawMetadata(photo, "path"),
         captureTime = captureTime,
         captureTs = captureTs,
         exposureBias = parseExposureBias(photo)
@@ -859,18 +912,32 @@ local function appendBracketGroup(groups, items)
         })
         table.insert(exposureBiases, item.exposureBias)
     end
+    local firstPhoto = photos[1]
+    local groupId = nil
+    if firstPhoto then
+        groupId = tostring(firstPhoto.id) .. "-" .. tostring(#photos)
+    end
     table.insert(groups, {
+        groupId = groupId,
         count = #photos,
         startedAt = photos[1] and photos[1].captureTime or nil,
         endedAt = photos[#photos] and photos[#photos].captureTime or nil,
         exposureBiases = exposureBiases,
-        photos = photos
+        photos = photos,
+        handoff = {
+            lightroomManualAction = "Select these photo IDs in order, then use Photo > Photo Merge > HDR.",
+            photoIds = (function()
+                local ids = {}
+                for _, photo in ipairs(photos) do table.insert(ids, tostring(photo.id)) end
+                return ids
+            end)()
+        }
     })
 end
 
 -- Find likely exposure-bracketed groups. This only groups source photos;
 -- Lightroom Classic's HDR Photo Merge is not exposed as a documented Lua SDK call.
-function CatalogModule.findExposureBrackets(params, callback)
+local function findExposureBracketsImpl(params, callback)
     ensureLrModules()
     params = params or {}
     local logger = getLogger()
@@ -885,17 +952,34 @@ function CatalogModule.findExposureBrackets(params, callback)
 
     local catalog = LrApplication.activeCatalog()
     local photos = {}
+    local missingPhotoIds = {}
 
     catalog:withReadAccessDo(function()
         if type(photoIds) == "table" and #photoIds > 0 then
+            source = "photoIds"
             for _, photoId in ipairs(photoIds) do
                 local photo = catalog:getPhotoByLocalId(tonumber(photoId))
-                if photo then table.insert(photos, photo) end
+                if photo then
+                    table.insert(photos, photo)
+                else
+                    table.insert(missingPhotoIds, tostring(photoId))
+                end
             end
         elseif source == "all" then
             photos = catalog:getAllPhotos()
         else
             photos = catalog:getTargetPhotos()
+        end
+
+        if hasBracketFilters(params) then
+            local filtered = {}
+            local searchDesc = bracketFilterDesc(params)
+            for _, photo in ipairs(photos or {}) do
+                if matchPhoto(photo, searchDesc) then
+                    table.insert(filtered, photo)
+                end
+            end
+            photos = filtered
         end
     end)
 
@@ -931,6 +1015,41 @@ function CatalogModule.findExposureBrackets(params, callback)
     end
     if isBracketGroup(current, minPhotos) then appendBracketGroup(groups, current) end
 
+    local warnings = {}
+    if #photos < minPhotos then
+        table.insert(warnings, {
+            code = "SOURCE_BELOW_MIN_PHOTOS",
+            message = "The source photo set has fewer photos than minPhotos.",
+            minPhotos = minPhotos,
+            scanned = #photos
+        })
+    end
+    if #photos > 0 and missingExposureBias == #photos then
+        table.insert(warnings, {
+            code = "NO_EXPOSURE_BIAS_METADATA",
+            message = "No scanned photos had usable exposure-bias metadata. Lightroom SDK exposes the display key as exposureBias; some files may not contain EXIF exposure compensation."
+        })
+    end
+    if #photos > 0 and missingCaptureTime == #photos then
+        table.insert(warnings, {
+            code = "NO_CAPTURE_TIME_METADATA",
+            message = "No scanned photos had usable capture-time metadata."
+        })
+    end
+    if source == "all" and not hasBracketFilters(params) then
+        table.insert(warnings, {
+            code = "ALL_SCAN_WITHOUT_FILTERS",
+            message = "Full-catalog bracket scan ran without folder/date/file-format filters. Prefer explicit photo IDs, selected photos, or restrictive filters for large catalogs."
+        })
+    end
+    if #missingPhotoIds > 0 then
+        table.insert(warnings, {
+            code = "PHOTO_IDS_NOT_FOUND",
+            message = "Some requested photo IDs were not found in the catalog.",
+            photoIds = missingPhotoIds
+        })
+    end
+
     logger:info("Found " .. #groups .. " exposure bracket groups from " .. tostring(#photos or 0) .. " photos")
     callback({
         result = {
@@ -939,16 +1058,45 @@ function CatalogModule.findExposureBrackets(params, callback)
             scanned = #photos,
             ignored = {
                 missingCaptureTime = missingCaptureTime,
-                missingExposureBias = missingExposureBias
+                missingExposureBias = missingExposureBias,
+                missingPhotoIds = #missingPhotoIds
+            },
+            warnings = #warnings > 0 and warnings or nil,
+            handoff = {
+                lightroomNativeMerge = "unavailable_public_sdk",
+                recommendation = "manual_lightroom_photo_merge",
+                rationale = "Lightroom Classic HDR Photo Merge is documented as a UI workflow, not as a public Lua SDK command.",
+                steps = {
+                    "Run lr -o json --fields groups.groupId,groups.photos.id,groups.exposureBiases catalog find-brackets.",
+                    "For each group, select the listed photo IDs in chronological order.",
+                    "In Lightroom Classic, choose Photo > Photo Merge > HDR, review options, then click Merge."
+                }
             },
             parameters = {
                 source = source,
+                folderPath = params.folderPath,
+                captureDateFrom = params.captureDateFrom,
+                captureDateTo = params.captureDateTo,
+                fileFormat = params.fileFormat,
                 maxSecondsBetween = maxSecondsBetween,
                 minPhotos = minPhotos,
                 maxPhotos = maxPhotos
             }
         }
     })
+end
+
+function CatalogModule.findExposureBrackets(params, callback)
+    local ok, err = ErrorUtils.safeCall(function()
+        findExposureBracketsImpl(params, callback)
+    end)
+    if not ok then
+        callback(ErrorUtils.createError(
+            "BRACKET_DISCOVERY_ERROR",
+            "Exposure bracket discovery failed",
+            tostring(err)
+        ))
+    end
 end
 
 -- Get collections in catalog

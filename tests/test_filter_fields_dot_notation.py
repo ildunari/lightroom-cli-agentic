@@ -37,6 +37,35 @@ class TestDotNotationFilter:
         result = OutputFormatter._filter_fields(data, ["metadata.width"])
         assert result == {"metadata": {"width": 1920}}
 
+    def test_deep_dot_notation_extracts_nested_list_fields(self):
+        data = {
+            "groups": [
+                {
+                    "groupId": "1-3",
+                    "photos": [
+                        {"id": "1", "filename": "a.dng"},
+                        {"id": "2", "filename": "b.dng"},
+                    ],
+                    "exposureBiases": [-1, 0],
+                }
+            ],
+            "count": 1,
+        }
+        result = OutputFormatter._filter_fields(
+            data,
+            ["groups.groupId", "groups.photos.id", "groups.exposureBiases", "count"],
+        )
+        assert result == {
+            "groups": [
+                {
+                    "groupId": "1-3",
+                    "photos": [{"id": "1"}, {"id": "2"}],
+                    "exposureBiases": [-1, 0],
+                }
+            ],
+            "count": 1,
+        }
+
     def test_mixed_dot_and_plain_fields(self):
         data = {
             "photos": [{"id": "1", "name": "a.jpg"}],

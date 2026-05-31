@@ -88,6 +88,18 @@ class TestValidateParams:
         with pytest.raises(ValidationError, match="expected JSON array"):
             validate_params("catalog.addKeywords", {"photoId": "123", "keywords": "not_a_list"})
 
+    def test_find_brackets_rejects_empty_photo_ids(self):
+        from lightroom_sdk.validation import ValidationError, validate_params
+
+        with pytest.raises(ValidationError, match="photoIds"):
+            validate_params("catalog.findExposureBrackets", {"photoIds": []})
+
+    def test_find_brackets_rejects_max_photos_below_min_photos(self):
+        from lightroom_sdk.validation import ValidationError, validate_params
+
+        with pytest.raises(ValidationError, match="maxPhotos"):
+            validate_params("catalog.findExposureBrackets", {"minPhotos": 5, "maxPhotos": 3})
+
     def test_enum_valid_value(self):
         from lightroom_sdk.validation import validate_params
 

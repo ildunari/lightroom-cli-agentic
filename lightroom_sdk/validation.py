@@ -62,7 +62,31 @@ def validate_params(command: str, params: dict) -> dict:
         param_schema = next(p for p in schema.params if p.name == key)
         validated[key] = _coerce_type(key, value, param_schema)
 
+    _validate_command_params(command, validated)
     return validated
+
+
+def _validate_command_params(command: str, params: dict) -> None:
+    """Cross-field validation for commands that need more than schema ranges."""
+    if command != "catalog.findExposureBrackets":
+        return
+
+    photo_ids = params.get("photoIds")
+    if photo_ids is not None and len(photo_ids) == 0:
+        raise ValidationError(
+            "Parameter 'photoIds' must contain at least one photo ID",
+            param="photoIds",
+            suggestions=["Omit photoIds to use the selected photos, or pass one or more explicit IDs"],
+        )
+
+    min_photos = params.get("minPhotos", 3)
+    max_photos = params.get("maxPhotos", 9)
+    if max_photos < min_photos:
+        raise ValidationError(
+            "Parameter 'maxPhotos' must be greater than or equal to 'minPhotos'",
+            param="maxPhotos",
+            suggestions=["Increase maxPhotos or lower minPhotos"],
+        )
 
 
 def _check_range(name: str, value: int | float, schema: ParamSchema) -> None:

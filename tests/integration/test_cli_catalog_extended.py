@@ -309,6 +309,64 @@ def test_catalog_find_brackets_all(mock_get_bridge, runner):
 
 
 @patch("cli.helpers.get_bridge")
+def test_catalog_find_brackets_all_with_filters(mock_get_bridge, runner):
+    """lr catalog find-brackets forwards restrictive filters for intentional scans"""
+    mock_bridge = AsyncMock()
+    mock_bridge.send_command.return_value = {
+        "id": "15",
+        "success": True,
+        "result": {"groups": [], "count": 0},
+    }
+    mock_get_bridge.return_value = mock_bridge
+
+    result = runner.invoke(
+        cli,
+        [
+            "catalog",
+            "find-brackets",
+            "--all",
+            "--folder-path",
+            "/Shoot/Day1",
+            "--capture-date-from",
+            "2026-05-01",
+            "--capture-date-to",
+            "2026-05-02",
+            "--file-format",
+            "RAW",
+        ],
+    )
+    assert result.exit_code == 0
+    mock_bridge.send_command.assert_called_once_with(
+        "catalog.findExposureBrackets",
+        {
+            "maxSecondsBetween": 2.0,
+            "minPhotos": 3,
+            "maxPhotos": 9,
+            "source": "all",
+            "folderPath": "/Shoot/Day1",
+            "captureDateFrom": "2026-05-01",
+            "captureDateTo": "2026-05-02",
+            "fileFormat": "RAW",
+        },
+        timeout=60.0,
+    )
+
+
+@patch("cli.helpers.get_bridge")
+def test_catalog_find_brackets_rejects_empty_photo_ids_before_connect(mock_get_bridge, runner):
+    result = runner.invoke(cli, ["catalog", "find-brackets", "--photo-ids", ",,,"])
+    assert result.exit_code == 2
+    mock_get_bridge.assert_not_called()
+
+
+@patch("cli.helpers.get_bridge")
+def test_catalog_find_brackets_rejects_max_below_min_before_connect(mock_get_bridge, runner):
+    result = runner.invoke(cli, ["catalog", "find-brackets", "--min-photos", "5", "--max-photos", "3"])
+    assert result.exit_code == 2
+    mock_get_bridge.assert_not_called()
+
+
+@patch("cli.helpers.get_bridge")
 def test_catalog_rotate_left(mock_get_bridge, runner):
     mock_bridge = AsyncMock()
     mock_bridge.send_command.return_value = {

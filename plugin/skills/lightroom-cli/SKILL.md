@@ -128,6 +128,24 @@ Extended (v1.2.0): `--folder-path`, `--capture-date-from/to`, `--file-format`, `
 
 Full examples and notes → `references/catalog-find-filters.md`
 
+### Exposure bracket discovery and HDR handoff
+
+Use bracket discovery as a read-only planning step. It groups likely HDR exposure brackets by capture time plus EXIF exposure compensation.
+
+```bash
+lr -o json catalog find-brackets
+lr -o json catalog find-brackets --photo-ids 123,456,789
+lr -o json --fields groups.groupId,groups.photos.id,groups.exposureBiases,count,warnings catalog find-brackets
+```
+
+Avoid catalog-wide scans unless you add a restrictive filter:
+
+```bash
+lr -o json catalog find-brackets --all --folder-path "/Shoot/Day1" --capture-date-from 2026-05-01 --file-format RAW
+```
+
+The result includes `groups[].groupId`, chronological `groups[].photos`, `warnings`, and `handoff`. `handoff.lightroomNativeMerge` is `unavailable_public_sdk`: Lightroom Classic HDR Photo Merge is documented as a UI command, not a public Lua SDK call. For now, select each group's photo IDs and use **Photo > Photo Merge > HDR** manually, or hand the group paths to a verified external HDR tool.
+
 ### Safe editing with snapshots
 
 ```bash

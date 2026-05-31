@@ -159,8 +159,13 @@ lr catalog find --capture-date-from "2024-06-01" --keyword "portrait"
 lr develop batch-set --photo-ids 123,456,789 Exposure 0.5
 
 # Find likely exposure-bracketed groups
-lr catalog find-brackets --photo-ids 123,456,789
-lr catalog find-brackets --all --max-seconds-between 2
+lr -o json catalog find-brackets --photo-ids 123,456,789
+lr -o json --fields groups.groupId,groups.photos.id,groups.exposureBiases,count,warnings catalog find-brackets
+lr -o json catalog find-brackets --all --folder-path "/Shoot/Day1" --capture-date-from "2024-06-01" --file-format RAW
+
+# HDR merge handoff
+# Lightroom-native HDR merge is not exposed as a verified public Lua SDK API.
+# See docs/hdr-merge-feasibility.md for current evidence and handoff workflow.
 
 # List/search develop presets
 lr catalog develop-presets --query "Portra"
