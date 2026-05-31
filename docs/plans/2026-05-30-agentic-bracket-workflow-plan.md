@@ -8,6 +8,12 @@ Turn this fork into a reliable CLI-first Lightroom Classic automation surface fo
 
 The end state should let an agent safely discover commands, inspect selected or explicit photos, group bracketed sets, report actionable failures, and run verified Lightroom workflows from shell commands without depending on MCP.
 
+Compact `/goal` text:
+
+```text
+/goal Harden lightroom-cli-agentic bracket discovery and prove HDR merge feasibility. Verify current Adobe/Lightroom/FastMCP docs before SDK work, run targeted plus full non-e2e tests, use Claude Code and Codex adversarial reviews at checkpoints and final, and stop when live Lightroom bracket smoke passes or the blocker is documented.
+```
+
 ## Current Baseline
 
 This fork is based on `znznzna/lightroom-cli` at upstream commit `a4fc4f6`.
@@ -25,6 +31,17 @@ Verified local prototype already present:
 Known limitation:
 
 - Lightroom Classic HDR Photo Merge has not been proven callable from the public Lua SDK. Treat merge as unconfirmed until a live probe proves otherwise.
+
+Use current docs, not memory, for anything version-sensitive. The initial research should refresh Adobe Lightroom Classic SDK docs, installed Lightroom plugin behavior, `fastmcp`/MCP schema behavior, and any external HDR CLI candidates before writing code that depends on them.
+
+Recommended skills/lanes for the next session:
+
+- `Freshness Verifier` — verify Adobe SDK, Lightroom Classic behavior, FastMCP, and external HDR tool docs before implementation.
+- `Web Research` — source-backed research for HDR merge alternatives and official Adobe documentation.
+- `lightroom-cli` skill owner — keep `plugin/skills/lightroom-cli/SKILL.md` aligned with `lr schema`, bracket examples, JSON/fields usage, dry-run rules, and recovery notes.
+- `Receiving Code Review KM` or `code-reviewer` subagent — adversarial review of diffs before each checkpoint.
+- `python-pro` or `test-engineer` subagent — targeted bracket tests, schema/help smoke, `ruff`, full non-e2e pytest, and live Lightroom smoke when available.
+- `repo-ops` subagent — keep diffs small, preserve generated/package metadata deliberately, monitor CI, and decide upstream-compatible versus Kosta-specific changes.
 
 ## Setup
 
@@ -100,6 +117,13 @@ Expected:
 - `groups[].exposureBiases` contains distinct EV values.
 - Missing metadata increments `ignored.missingCaptureTime` or `ignored.missingExposureBias`.
 
+Review checkpoints:
+
+1. After Phase 1 metadata-key changes, run targeted tests and ask Claude Code plus Codex for adversarial review.
+2. After any schema/CLI/MCP surface change, review specifically for command-discovery drift and wrong risk metadata.
+3. Before final push, run full non-e2e tests, command help/schema smoke, and final Claude Code plus Codex review.
+4. Treat review findings as blockers unless they are explicitly documented as out of scope.
+
 ## Implementation Plan
 
 ### Phase 1: Harden bracket discovery
@@ -108,6 +132,7 @@ Objective: make `lr catalog find-brackets` robust enough for agent use.
 
 Tasks:
 
+- Run Freshness Verifier/Web Research first for Adobe Lightroom Classic SDK metadata and any Photo Merge/HDR API claims. Keep receipts in the PR or final report.
 - Verify real Lightroom metadata keys for EV compensation. Current implementation tries `exposureBias` and `exposureBiasValue`; confirm with live RAW files.
 - Add an output warning when no photos have exposure-bias metadata.
 - Add optional `--folder-path`, `--capture-date-from`, `--capture-date-to`, and `--file-format` filters if `--all` is needed on real catalogs.
@@ -171,7 +196,7 @@ Objective: prove or rule out Lightroom-native batch HDR merge.
 
 Tasks:
 
-- Search Adobe Lightroom Classic SDK docs and installed SDK references for any HDR/Photo Merge APIs.
+- Refresh current Adobe Lightroom Classic SDK docs and installed SDK references for any HDR/Photo Merge APIs. Do not rely on model memory.
 - Inspect Lightroom menu command surfaces available to Lua plugins, if any.
 - Build a tiny live probe command only if there is a plausible API. Keep it hidden or experimental until verified.
 - If no SDK path exists, document the decision and evaluate alternatives:
@@ -240,6 +265,16 @@ Before mutation:
 ```bash
 lr schema COMMAND
 lr COMMAND --dry-run
+```
+
+Adversarial review prompts:
+
+```text
+Review this Lightroom CLI diff for false SDK assumptions, schema/CLI/MCP drift, unsafe catalog-wide behavior, weak error handling, and missing tests. Lead with blocking issues and exact files.
+```
+
+```text
+Review this plan/result against current Adobe Lightroom Classic SDK and FastMCP docs. Identify stale assumptions, unverified APIs, and places where the agent should stop instead of implementing.
 ```
 
 ## Open Questions

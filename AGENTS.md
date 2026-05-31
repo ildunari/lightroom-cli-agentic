@@ -60,11 +60,13 @@ Live Lightroom smoke, when Lightroom Classic is available:
 
 - Inspect `lr schema <command>` and `lightroom_sdk/schema.py` before adding or changing command behavior.
 - For a new command, update all four surfaces together: Click CLI, schema, Lua plugin route/handler, and tests.
+- Before coding against Lightroom SDK, Adobe APIs, CLI flags, MCP/FastMCP behavior, or external HDR tools, verify current docs in-session. Record short freshness receipts in the final report or plan update.
 - Keep commands machine-readable by default for agents: support `-o json`, `--fields`, `--json`, and `--json-stdin` patterns already used in the repo.
 - Prefer explicit photo IDs over implicit selection for repeatable agent workflows, but preserve selected-photo defaults where that is the established UX.
 - Return structured failures with actionable `code`, `message`, and recovery hints where practical. Do not leak raw stack traces through CLI output.
 - Treat mutating/destructive operations carefully: schema must mark `mutating`, `supports_dry_run`, and `requires_confirm` accurately.
 - Do not invent Lightroom SDK capabilities. If a capability is not verified in Adobe docs or live Lightroom behavior, label it as unconfirmed and design a probe first.
+- Use adversarial review at phase checkpoints and before final push: ask Claude Code and Codex to review for false SDK assumptions, unsafe defaults, schema/CLI/MCP drift, and missing tests. Fix or explicitly defer findings.
 
 ## Constraints
 
@@ -82,6 +84,12 @@ The next implementation session should start from:
 
 ```bash
 docs/plans/2026-05-30-agentic-bracket-workflow-plan.md
+```
+
+Compact `/goal` form for long runs:
+
+```text
+/goal Harden lightroom-cli-agentic bracket discovery and prove HDR merge feasibility. Verify current Adobe/Lightroom/FastMCP docs before SDK work, run targeted plus full non-e2e tests, use Claude Code and Codex adversarial reviews at checkpoints and final, and stop when live Lightroom bracket smoke passes or the blocker is documented.
 ```
 
 ## Done Conditions
